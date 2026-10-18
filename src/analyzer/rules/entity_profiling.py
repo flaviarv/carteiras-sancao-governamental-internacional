@@ -1,0 +1,1 @@
+# Agrupamento de endereços por entidade/indivíduo

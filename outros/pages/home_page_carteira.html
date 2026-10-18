@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal Forense PLD/CFT - On-Chain</title>
+  <style>
+    :root {
+      --bg-main: #0c0d12;
+      --bg-card: #151720;
+      --bg-input: #1c1f2b;
+      --border-color: #272a38;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      
+      --accent-blue: #185adb;
+      --risk-low: #00a884;
+      --risk-med: #fca311;
+      --risk-high: #e83151;
+      
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      font-family: var(--font-family);
+      line-height: 1.5;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    /* Cabeçalho */
+    header {
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    /* Barra de Pesquisa */
+    .search-panel {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .search-panel input {
+      flex: 1;
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-panel input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .search-panel button {
+      background-color: var(--accent-blue);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .search-panel button:hover {
+      opacity: 0.9;
+    }
+
+    /* Grid de Métricas */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .metric-card span {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .metric-card .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-top: 4px;
+      font-family: var(--font-mono);
+    }
+
+    /* Badges de Risco */
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 0.85rem;
+    }
+
+    .badge-alto { background-color: rgba(232, 49, 81, 0.2); color: var(--risk-high); border: 1px solid var(--risk-high); }
+    .badge-medio { background-color: rgba(252, 163, 17, 0.2); color: var(--risk-med); border: 1px solid var(--risk-med); }
+    .badge-baixo { background-color: rgba(0, 168, 132, 0.2); color: var(--risk-low); border: 1px solid var(--risk-low); }
+
+    /* Caixa de Alertas */
+    .alerts-container {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .alerts-container h3 {
+      font-size: 1rem;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .alert-item {
+      background: rgba(232, 49, 81, 0.1);
+      border-left: 4px solid var(--risk-high);
+      color: #ff9494;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      font-size: 0.88rem;
+      border-radius: 0 4px 4px 0;
+    }
+
+    .alert-item.ok {
+      background: rgba(0, 168, 132, 0.1);
+      border-left: 4px solid var(--risk-low);
+      color: #60e3c5;
+    }
+
+    /* Tabela de Transações */
+    .table-container {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    .table-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .table-header h3 {
+      font-size: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    th {
+      background-color: #11131a;
+      color: var(--text-secondary);
+      padding: 12px 16px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-family: var(--font-mono);
+    }
+
+    tr:hover {
+      background-color: #1a1c26;
+    }
+
+    .tag-flow {
+      font-size: 0.75rem;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+    .inflow { background-color: #0b2b23; color: #00a884; }
+    .outflow { background-color: #2b1116; color: #e83151; }
+
+    /* Loading */
+    #loading {
+      display: none;
+      color: var(--accent-blue);
+      font-size: 0.9rem;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Cabeçalho -->
+  <header>
+    <h1>🛡️ Terminal de Monitoramento & Risco PLD/CFT</h1>
+    <p>Inspeção forense de carteiras EVM integrada ao Blockscout e verificação de sanções</p>
+  </header>
+
+  <!-- Painel de Pesquisa -->
+  <div class="search-panel">
+    <input type="text" id="walletInput" value="0x8576acc5c05d6ce88f4e49bf65bdf0c62f91353c" placeholder="Insira o endereço 0x...">
+    <button onclick="executarAnalise()">Analisar Carteira</button>
+  </div>
+  <div id="loading">⚡ Consultando API do Blockscout e calculando heurísticas de conformidade...</div>
+
+  <!-- Métricas Rápidas -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <span>Score de Risco</span>
+      <div class="value" id="riskScore">--</div>
+    </div>
+    <div class="metric-card">
+      <span>Classificação</span>
+      <div class="value" id="riskBadge"><span class="badge">--</span></div>
+    </div>
+    <div class="metric-card">
+      <span>Transações Inspecionadas</span>
+      <div class="value" id="totalTxs">0</div>
+    </div>
+    <div class="metric-card">
+      <span>Base OFAC Ativa</span>
+      <div class="value" style="color: #00a884;">Operacional</div>
+    </div>
+  </div>
+
+  <!-- Flags / Alertas Disparados -->
+  <div class="alerts-container">
+    <h3>Flags de Risco Identificados</h3>
+    <div id="alertsList">
+      <div class="alert-item ok">Nenhuma consulta realizada. Clique em "Analisar Carteira".</div>
+    </div>
+  </div>
+
+  <!-- Tabela de Transações -->
+  <div class="table-container">
+    <div class="table-header">
+      <h3>Extrato de Transações Recentes</h3>
+      <span id="targetEcho" style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Tx Hash</th>
+          <th>Fluxo</th>
+          <th>Contraparte</th>
+          <th>Valor (ETH)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="txTableBody">
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-secondary);">Aguardando execução...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // Base de endereços canônicos da OFAC e mixers
+  const SANCTIONED_OFAC = new Set([
+    "0x8576acc5c05d6ce88f4e49bf65bdf0c62f91353c", // Tornado Cash Router
+    "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b", // Tornado 0.1 ETH
+    "0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936", // Tornado 1 ETH
+    "0x910cbd523d972eb0a6f4cae4618ad62622b39dbf", // Tornado 10 ETH
+    "0xa160cdab225685da1d56aa342ad8841c3b53f291", // Tornado 100 ETH
+    "0x0832b0393ea920913cc2974bf78b0463db01119",
+    "0x098b716b8aaf21512996dc57eb0615e2383e2f96",
+    "0xa0e1c89ef1a489c9c7de96311ed5ce5d32c20e4b"
+  ].map(a => a.toLowerCase()));
+
+  async function executarAnalise() {
+    const target = document.getElementById("walletInput").value.trim().toLowerCase();
+    const loading = document.getElementById("loading");
+    
+    if (!target.startsWith("0x") || target.length !== 42) {
+      alert("Por favor, insira um endereço EVM válido (0x seguido de 40 caracteres).");
+      return;
+    }
+
+    loading.style.display = "block";
+    document.getElementById("targetEcho").innerText = `Alvo: ${target}`;
+
+    try {
+      const response = await fetch(`https://eth.blockscout.com/api/v2/addresses/${target}/transactions`);
+      const data = await response.json();
+      const items = data.items || [];
+
+      // Avaliação de risco
+      let score = 0;
+      let motivos = [];
+
+      // 1. Sanção Direta (1-hop)
+      if (SANCTIONED_OFAC.has(target)) {
+        score += 100;
+        motivos.push("O próprio endereço consta na lista SDN da OFAC / Contrato de Mixer");
+      }
+
+      const rows = [];
+      let foundSanctionedCounterparty = false;
+      let foundHighValue = false;
+      let foundFailure = false;
+
+      items.forEach(tx => {
+        const fromAddr = (tx.from?.hash || "").toLowerCase();
+        const toAddr = (tx.to?.hash || "").toLowerCase();
+        const valWei = BigInt(tx.value || "0");
+        const valEth = Number(valWei) / 1e18;
+        const status = tx.result || "success";
+        const txHash = tx.hash || "";
+
+        const isOutflow = (fromAddr === target);
+        const contraparte = isOutflow ? toAddr : fromAddr;
+
+        // Regras
+        if (SANCTIONED_OFAC.has(contraparte) && !foundSanctionedCounterparty) {
+          score += 100;
+          motivos.push(`Interação direta (1-hop) com entidade sancionada: ${contraparte.slice(0, 10)}...`);
+          foundSanctionedCounterparty = true;
+        }
+
+        if (valEth >= 15.0 && !foundHighValue) {
+          score += 15;
+          motivos.push(`Movimentação de volume atípico detectada (>= 15 ETH)`);
+          foundHighValue = true;
+        }
+
+        if (status !== "success" && !foundFailure) {
+          score += 10;
+          motivos.push(`Transação com erro ou reversão on-chain (${status})`);
+          foundFailure = true;
+        }
+
+        rows.push({
+          hash: txHash,
+          tipo: isOutflow ? "OUTFLOW" : "INFLOW",
+          contraparte: contraparte,
+          valor: valEth.toFixed(4),
+          status: status
+        });
+      });
+
+      // Normalização
+      const finalScore = Math.min(score, 100);
+      let nivel = "BAIXO";
+      let badgeClass = "badge-baixo";
+
+      if (finalScore >= 70) {
+        nivel = "ALTO";
+        badgeClass = "badge-alto";
+      } else if (finalScore >= 30) {
+        nivel = "MÉDIO";
+        badgeClass = "badge-medio";
+      }
+
+      // Atualiza DOM
+      document.getElementById("riskScore").innerText = `${finalScore}/100`;
+      document.getElementById("riskBadge").innerHTML = `<span class="badge ${badgeClass}">${nivel} RISCO</span>`;
+      document.getElementById("totalTxs").innerText = items.length;
+
+      // Renderiza Alertas
+      const alertsDiv = document.getElementById("alertsList");
+      if (motivos.length > 0) {
+        alertsDiv.innerHTML = motivos.map(m => `<div class="alert-item">⚠️ ${m}</div>`).join("");
+      } else {
+        alertsDiv.innerHTML = `<div class="alert-item ok">✅ Nenhum vínculo crítico ou anomalia estrutural identificada no lote analisado.</div>`;
+      }
+
+      // Renderiza Tabela
+      const tbody = document.getElementById("txTableBody");
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Nenhuma transação recente encontrada para este endereço.</td></tr>`;
+      } else {
+        tbody.innerHTML = rows.map(r => `
+          <tr>
+            <td title="${r.hash}">${r.hash.slice(0, 8)}...${r.hash.slice(-6)}</td>
+            <td><span class="tag-flow ${r.tipo.toLowerCase()}">${r.tipo}</span></td>
+            <td title="${r.contraparte}">${r.contraparte ? `${r.contraparte.slice(0, 10)}...${r.contraparte.slice(-6)}` : "Criação de Contrato"}</td>
+            <td>${r.valor} ETH</td>
+            <td><span style="color: ${r.status === 'success' ? 'var(--risk-low)' : 'var(--risk-high)'}">${r.status}</span></td>
+          </tr>
+        `).join("");
+      }
+
+    } catch (err) {
+      alert("Falha ao consultar a API do Blockscout: " + err.message);
+    } finally {
+      loading.style.display = "none";
+    }
+  }
+
+  // Executa uma primeira triagem automática ao carregar a página
+  window.onload = () => {
+    executarAnalise();
+  };
+</script>
+
+</body>
+</html>

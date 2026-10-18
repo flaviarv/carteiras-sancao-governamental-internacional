@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RegTech LATAM - Consulta Cadastral de VASP</title>
+  <style>
+    :root {
+      --bg-main: #0a0c10;
+      --bg-card: #12151e;
+      --bg-input: #1b1f2c;
+      --border-color: #262c3d;
+      --border-focus: #185adb;
+      --text-main: #f0f3f8;
+      --text-muted: #8b949e;
+      
+      --accent-blue: #185adb;
+      --accent-hover: #1f6feb;
+      --status-active: #00a884;
+      --status-warning: #fca311;
+      --status-inactive: #e83151;
+      
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px;
+      flex: 1;
+    }
+
+    /* Top Navigation */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 40px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-badge {
+      background-color: rgba(24, 90, 219, 0.15);
+      color: #58a6ff;
+      border: 1px solid rgba(24, 90, 219, 0.4);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .hero h1 {
+      font-size: 2.3rem;
+      font-weight: 700;
+      letter-spacing: -0.8px;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 650px;
+      margin: 0 auto;
+    }
+
+    /* Search Box */
+    .search-wrapper {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      margin-bottom: 32px;
+    }
+
+    .search-grid {
+      display: grid;
+      grid-template-columns: 260px 1fr 140px;
+      gap: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .search-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field-group label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    select, input {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    select:focus, input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 1px var(--border-focus);
+    }
+
+    input {
+      font-family: var(--font-mono);
+    }
+
+    .btn-search {
+      background-color: var(--accent-blue);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background-color 0.2s;
+      align-self: flex-end;
+      height: 47px;
+    }
+
+    .btn-search:hover {
+      background-color: var(--accent-hover);
+    }
+
+    /* Context Hint */
+    .regulator-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      padding: 10px 14px;
+      background-color: rgba(255, 255, 255, 0.02);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .regulator-hint strong {
+      color: var(--text-main);
+    }
+
+    /* Results Section */
+    .result-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 24px;
+      margin-top: 24px;
+      display: none;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+
+    .entity-title {
+      font-size: 1.3rem;
+      font-weight: 600;
+    }
+
+    .entity-type {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .badge-status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .status-ok { background: rgba(0, 168, 132, 0.15); color: var(--status-active); border: 1px solid var(--status-active); }
+    .status-alert { background: rgba(232, 49, 81, 0.15); color: var(--status-inactive); border: 1px solid var(--status-inactive); }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+
+    .detail-item span {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .detail-item p {
+      font-size: 0.95rem;
+      font-family: var(--font-mono);
+    }
+
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 20px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Topbar -->
+  <nav class="navbar">
+    <div class="brand">
+      <span>🏛️ VASP Registry</span>
+      <span class="brand-badge">LATAM + MX</span>
+    </div>
+    <div style="font-size: 0.85rem; color: var(--text-muted);">
+      Directório de Conformidade e Licenciamento PLD/CFT
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Verificação Cadastral de VASP / PSAV</h1>
+    <p>Consulte a situação societária, autorização de funcionamento e identificadores fiscais de corretoras e custodiantes de ativos virtuais.</p>
+  </div>
+
+  <!-- Search Panel -->
+  <div class="search-wrapper">
+    <div class="search-grid">
+      <!-- Seletor de País -->
+      <div class="field-group">
+        <label for="countrySelect">Jurisdição</label>
+        <select id="countrySelect" onchange="atualizarContextoPais()">
+          <option value="BR">🇧🇷 Brasil (CNPJ)</option>
+          <option value="AR">🇦🇷 Argentina (CUIT)</option>
+          <option value="MX">🇲🇽 México (RFC)</option>
+          <option value="CL">🇨🇱 Chile (RUT)</option>
+          <option value="CO">🇨🇴 Colômbia (NIT)</option>
+          <option value="PE">🇵🇪 Peru (RUC)</option>
+          <option value="UY">🇺🇾 Uruguai (RUT)</option>
+          <option value="PY">🇵🇾 Paraguai (RUC)</option>
+          <option value="BO">🇧🇴 Bolívia (NIT)</option>
+          <option value="EC">🇪🇨 Equador (RUC)</option>
+          <option value="VE">🇻🇪 Venezuela (RIF)</option>
+          <option value="GY">🇬🇾 Guiana (TIN)</option>
+          <option value="SR">🇸🇷 Suriname (FIN)</option>
+        </select>
+      </div>
+
+      <!-- Campo de Documento -->
+      <div class="field-group">
+        <label id="docLabel" for="docInput">Número do CNPJ</label>
+        <input type="text" id="docInput" placeholder="00.000.000/0001-00">
+      </div>
+
+      <!-- Botão de Ação -->
+      <button class="btn-search" onclick="simularPesquisa()">
+        <span>Consultar</span>
+      </button>
+    </div>
+
+    <!-- Contexto Regulatório Dinâmico -->
+    <div class="regulator-hint">
+      <span>📌</span>
+      <span id="regulatorText">Órgão Regulador Competente: <strong>Banco Central do Brasil (BCB) / CVM</strong></span>
+    </div>
+  </div>
+
+  <!-- Card de Resultado (Exemplo de Retorno) -->
+  <div id="resultCard" class="result-card">
+    <div class="result-header">
+      <div>
+        <div class="entity-title" id="resLegalName">Mercado de Ativos Digitais Ltda</div>
+        <div class="entity-type" id="resTradeName">Nome Fantasia: Crypto Exchange LATAM</div>
+      </div>
+      <div>
+        <span id="resBadge" class="badge-status status-ok">Autorizado / Regular</span>
+      </div>
+    </div>
+
+    <div class="details-grid">
+      <div class="detail-item">
+        <span id="resDocType">CNPJ</span>
+        <p id="resDocNumber">00.000.000/0001-00</p>
+      </div>
+      <div class="detail-item">
+        <span>Licença / Registro VASP</span>
+        <p id="resRegStatus">VASP-BR-2024/9912</p>
+      </div>
+      <div class="detail-item">
+        <span>Enquadramento Regulatório</span>
+        <p id="resFramework">Lei 14.478/2022</p>
+      </div>
+      <div class="detail-item">
+        <span>Data de Constituição</span>
+        <p id="resFoundingDate">14/03/2019</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Plataforma de Monitoramento de Risco e Inteligência Regulatória para Provedores de Serviços de Ativos Virtuais.
+</footer>
+
+<script>
+  // Metadados regulatórios e de identificação fiscal por país
+  const COUNTRY_METADATA = {
+    BR: { label: "Número do CNPJ", placeholder: "00.000.000/0001-00", regulator: "Banco Central do Brasil (BCB) / CVM", law: "Lei 14.478/2022" },
+    AR: { label: "Número do CUIT", placeholder: "30-00000000-0", regulator: "Comisión Nacional de Valores (CNV) / UIF", law: "Resolución General CNV 994/2024" },
+    MX: { label: "Número do RFC", placeholder: "ABC120315XX1", regulator: "CNBV / Banco de México (Banxico)", law: "Ley Fintech (Art. 30)" },
+    CL: { label: "Número do RUT", placeholder: "76.000.000-K", regulator: "Comisión para el Mercado Financiero (CMF)", law: "Ley 21.521 (Ley FinTech)" },
+    CO: { label: "Número do NIT", placeholder: "900.000.000-1", regulator: "Superintendencia Financiera de Colombia (SFC)", law: "Circular Externa SFC / UIAF" },
+    PE: { label: "Número do RUC", placeholder: "20123456789", regulator: "Superintendencia de Banca, Seguros y AFP (SBS / UIF)", law: "Decreto Supremo 006-2023-JUS" },
+    UY: { label: "Número do RUT", placeholder: "210000000010", regulator: "Banco Central del Uruguay (BCU)", law: "Marco Regulatorio de Activos Virtuales" },
+    PY: { label: "Número do RUC", placeholder: "80000000-1", regulator: "SEPRELAD / Banco Central del Paraguay", law: "Resolución SEPRELAD 08/2020" },
+    BO: { label: "Número do NIT", placeholder: "1020304050", regulator: "ASFI / Banco Central de Bolivia (BCB)", law: "Resolución de Directorio BCB N° 082/2024" },
+    EC: { label: "Número do RUC", placeholder: "1790000000001", regulator: "Superintendencia de Bancos / UAFE", law: "Código Orgánico Monetario y Financiero" },
+    VE: { label: "Número do RIF", placeholder: "J-00000000-0", regulator: "SUNACRIP / Sudeban", law: "Decreto Constituyente Criptoactivos" },
+    GY: { label: "Número do TIN", placeholder: "000-000-000", regulator: "Bank of Guyana / Financial Intelligence Unit (FIU)", law: "AML/CFT Act" },
+    SR: { label: "Número do FIN", placeholder: "00000000", regulator: "Centrale Bank van Suriname / FIU Suriname", law: "AML/CFT Framework" }
+  };
+
+  function atualizarContextoPais() {
+    const code = document.getElementById("countrySelect").value;
+    const meta = COUNTRY_METADATA[code];
+
+    document.getElementById("docLabel").innerText = meta.label;
+    document.getElementById("docInput").placeholder = meta.placeholder;
+    document.getElementById("regulatorText").innerHTML = `Órgão Regulador Competente: <strong>${meta.regulator}</strong>`;
+  }
+
+  function simularPesquisa() {
+    const code = document.getElementById("countrySelect").value;
+    const docValue = document.getElementById("docInput").value.trim();
+    const meta = COUNTRY_METADATA[code];
+    const card = document.getElementById("resultCard");
+
+    if (!docValue) {
+      alert(`Por favor, digite um ${meta.label} válido para realizar a consulta.`);
+      return;
+    }
+
+    // Atualiza os dados exibidos no card
+    document.getElementById("resDocType").innerText = meta.label.replace("Número do ", "");
+    document.getElementById("resDocNumber").innerText = docValue;
+    document.getElementById("resFramework").innerText = meta.law;
+    document.getElementById("resRegStatus").innerText = `REG-${code}-VASP-2026/04`;
+
+    // Torna o card visível com animação simples
+    card.style.display = "block";
+    card.scrollIntoView({ behavior: "smooth" });
+  }
+</script>
+
+</body>
+</html>
