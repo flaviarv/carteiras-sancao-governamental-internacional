@@ -1,7 +1,3 @@
 .venv
-data/carteiras/*.xml
-data/carteiras/*.csv
-data/carteiras/*.parquet
-data/carteiras/*.json
 __pycache__/
 *.pyc
