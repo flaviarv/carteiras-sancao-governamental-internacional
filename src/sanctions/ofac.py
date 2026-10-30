@@ -3,6 +3,7 @@ import re
 import logging
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+import pandas as pd
 import requests
 from lxml import etree
 
@@ -12,10 +13,17 @@ logger = logging.getLogger(__name__)
 
 class OFACSanctionsEngine:
     OFAC_XML_URL = "https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml"
+    COLUMNS = ["lookup_key", "source", "chain", "sanctions_id", "entity_name", "original_address", "nationality", "related_country"]
 
     PATTERNS = {
         "EVM": re.compile(r"^0x[a-fA-F0-9]{40}$"),
         "BITCOIN": re.compile(r"^(1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{38,87}$"),
+        "MONERO": re.compile(
+            r"^[48][0-9AB][1-9A-HJ-NP-Za-km-z]{93}$|^[48][0-9AB][1-9A-HJ-NP-Za-km-z]{104}$"
+        ),
+        "ZCASH": re.compile(
+            r"^t[13][a-km-zA-HJ-NP-Z1-9]{33}$|^zs1[a-z0-9]{75}$|^u1[a-z0-9]{50,200}$"
+        ),
         "SOLANA": re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$"),
         "TRON": re.compile(r"^T[a-km-zA-HJ-NP-Z1-9]{33}$"),
         "LITECOIN": re.compile(r"^(L|M)[a-km-zA-HJ-NP-Z1-9]{26,34}$|^ltc1[a-z0-9]{39,59}$"),
@@ -25,30 +33,19 @@ class OFACSanctionsEngine:
     def __init__(self, data_path: Optional[str] = None):
         if data_path is None:
             root_dir = Path(__file__).resolve().parent.parent.parent
-            self.data_path = str(root_dir / "data" / "carteiras" / "sdn_advanced.xml")
+            self.data_path = str(root_dir / "data" / "carteiras" / "sdn_advanced.parquet")
         else:
             self.data_path = data_path
 
         self.sanctioned_addresses: Dict[str, Dict[str, str]] = {}
 
-        self.sanctioned_addresses: Dict[str, Dict[str, str]] = {}
-
-    def sync_database(self, force_download: bool = False) -> None:
-        """Transfere o ficheiro oficial da OFAC para o diretório data/."""
-        os.makedirs(os.path.dirname(self.data_path), exist_ok=True)
-
-        if not os.path.exists(self.data_path) or force_download:
-            logger.info("A descarregar lista oficial sdn_advanced.xml da OFAC...")
-            response = requests.get(self.OFAC_XML_URL, stream=True, timeout=60)
-            response.raise_for_status()
-            with open(self.data_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=65536):
-                    f.write(chunk)
-            logger.info("Download concluído com sucesso.")
-
     def _identify_crypto(self, value: str) -> Optional[Tuple[str, str]]:
         if self.PATTERNS["EVM"].match(value):
             return value.lower(), "EVM"
+        if self.PATTERNS["MONERO"].match(value):
+            return value, "Monero (XMR)"
+        if self.PATTERNS["ZCASH"].match(value):
+            return value, "Zcash (ZEC)"
         if value.startswith("bc1") and self.PATTERNS["BITCOIN"].match(value.lower()):
             return value.lower(), "Bitcoin (Bech32)"
         if value.startswith("ltc1") and self.PATTERNS["LITECOIN"].match(value.lower()):
@@ -65,14 +62,55 @@ class OFACSanctionsEngine:
             return value, "Solana"
         return None
 
-    def load_sanctions(self) -> None:
-        """Carrega e indexa os endereços da lista de sanções da OFAC."""
-        if not os.path.exists(self.data_path):
-            self.sync_database()
+    @staticmethod
+    def _build_location_names(root) -> Dict[str, str]:
+        """Resolve cada Location do XML para o nome do país (ou do valor textual, ex.: 'Syria')."""
+        countries = {
+            e.get("ID"): (e.text or "").strip()
+            for e in root.xpath("//*[local-name()='Country'][@ID]")
+        }
+        names: Dict[str, str] = {}
+        for loc in root.xpath("//*[local-name()='Location'][@ID]"):
+            country_ids = loc.xpath("./*[local-name()='LocationCountry']/@CountryID")
+            name = countries.get(country_ids[0], "") if country_ids else ""
+            if not name:
+                vals = loc.xpath(
+                    ".//*[local-name()='LocationPartValue']/*[local-name()='Value']/text()"
+                )
+                name = str(vals[0]).strip() if vals else ""
+            if name:
+                names[loc.get("ID")] = name
+        return names
 
-        logger.info("A processar dados XML da OFAC...")
-        tree = etree.parse(self.data_path)
+    @staticmethod
+    def _extract_countries(party_el, location_names: Dict[str, str]) -> Tuple[str, str]:
+        """Retorna (nacionalidade, país_vinculado) de um perfil OFAC.
+
+        Nacionalidade vem dos Features 'Nationality Country' (10) e 'Citizenship Country' (11).
+        País vinculado vem dos Features 'Location' (25), usado como contexto alternativo.
+        """
+        nationality: list = []
+        related: list = []
+        for feat in party_el.xpath(".//*[local-name()='Feature']"):
+            feat_type = feat.get("FeatureTypeID")
+            if feat_type not in ("10", "11", "25"):
+                continue
+            for loc_id in feat.xpath(".//*[local-name()='VersionLocation']/@LocationID"):
+                name = location_names.get(loc_id)
+                if not name:
+                    continue
+                target = nationality if feat_type in ("10", "11") else related
+                if name not in target:
+                    target.append(name)
+        return ", ".join(nationality), ", ".join(related)
+
+    def _parse_xml_to_dict(self, xml_source) -> Dict[str, Dict[str, str]]:
+        """Extrai os endereços cripto do XML da OFAC para um dicionário estruturado."""
+        records: Dict[str, Dict[str, str]] = {}
+        tree = etree.parse(xml_source)
         root = tree.getroot()
+        location_names = self._build_location_names(root)
+        country_cache: Dict[str, Tuple[str, str]] = {}
 
         # O XML da OFAC agrupa pessoas e entidades em DistinctParty ou Profile
         # Cada endereço de carteira é armazenado sob nós Feature / VersionDetail
@@ -80,38 +118,87 @@ class OFACSanctionsEngine:
 
         for feature in features:
             # No sdn_advanced.xml, o texto do endereço fica em VersionDetail ou Value
-            detail_nodes = feature.xpath(".//*[local-name()='VersionDetail']/text() | .//*[local-name()='Value']/text()")
-            
+            detail_nodes = feature.xpath(
+                ".//*[local-name()='VersionDetail']/text() | .//*[local-name()='Value']/text()"
+            )
+
             for text_val in detail_nodes:
                 cleaned_val = str(text_val).strip()
                 crypto_match = self._identify_crypto(cleaned_val)
-                
+
                 if crypto_match:
                     lookup_key, chain_name = crypto_match
-                    
+
                     # Sobe na hierarquia para encontrar a entidade dona deste Feature
                     # (geralmente DistinctParty ou Profile)
-                    party = feature.xpath("ancestor::*[local-name()='DistinctParty' or local-name()='Profile'][1]")
-                    
+                    party = feature.xpath(
+                        "ancestor::*[local-name()='DistinctParty' or local-name()='Profile'][1]"
+                    )
+
                     entry_id = "Unknown"
                     entity_name = "OFAC Sanctioned Entity"
-                    
+                    nationality, related_country = "", ""
+
                     if party:
                         party_el = party[0]
                         entry_id = party_el.get("ID", party_el.get("FixedRef", "Unknown"))
+                        if entry_id not in country_cache:
+                            country_cache[entry_id] = self._extract_countries(party_el, location_names)
+                        nationality, related_country = country_cache[entry_id]
                         # Extrai o nome da entidade
-                        names = party_el.xpath(".//*[local-name()='NamePartValue']/text() | .//*[local-name()='FormattedFullName']/text()")
+                        names = party_el.xpath(
+                            ".//*[local-name()='NamePartValue']/text() | .//*[local-name()='FormattedFullName']/text()"
+                        )
                         if names:
                             entity_name = " ".join([str(n).strip() for n in names[:2]])
 
-                    self.sanctioned_addresses[lookup_key] = {
+                    records[lookup_key] = {
+                        "source": "OFAC",
                         "chain": chain_name,
                         "sanctions_id": entry_id,
                         "entity_name": entity_name,
                         "original_address": cleaned_val,
+                        "nationality": nationality,
+                        "related_country": related_country,
                     }
+        return records
 
-        logger.info(f"{len(self.sanctioned_addresses)} endereços únicos indexados.")
+    def sync_database(self, force_download: bool = False) -> None:
+        """Converte ou descarrega a lista oficial da OFAC em formato Parquet para data/carteiras/sdn_advanced.parquet."""
+        os.makedirs(os.path.dirname(self.data_path), exist_ok=True)
+        legacy_xml = str(Path(self.data_path).with_suffix(".xml"))
+
+        if not os.path.exists(self.data_path) or force_download:
+            if os.path.exists(legacy_xml) and not force_download:
+                logger.info("A converter sdn_advanced.xml local para Parquet...")
+                records = self._parse_xml_to_dict(legacy_xml)
+            else:
+                logger.info("A descarregar e converter lista oficial da OFAC para Parquet...")
+                response = requests.get(self.OFAC_XML_URL, stream=True, timeout=60)
+                response.raise_for_status()
+                with open(legacy_xml, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        f.write(chunk)
+                records = self._parse_xml_to_dict(legacy_xml)
+
+            rows = [{"lookup_key": k, **v} for k, v in records.items()]
+            df = pd.DataFrame(rows, columns=self.COLUMNS)
+            df.to_parquet(self.data_path, engine="pyarrow", index=False)
+            if os.path.exists(legacy_xml):
+                os.remove(legacy_xml)
+            logger.info(f"Base OFAC salva em Parquet ({len(records)} endereços).")
+
+    def load_sanctions(self) -> None:
+        """Carrega e indexa os endereços da lista de sanções da OFAC a partir do Parquet."""
+        if not os.path.exists(self.data_path):
+            self.sync_database()
+
+        logger.info("A processar base Parquet da OFAC...")
+        df = pd.read_parquet(self.data_path, engine="pyarrow")
+        records = df.to_dict(orient="records")
+        self.sanctioned_addresses = {row.pop("lookup_key"): row for row in records}
+
+        logger.info(f"{len(self.sanctioned_addresses)} endereços únicos indexados da OFAC.")
 
     def is_sanctioned(self, address: str) -> Optional[Dict[str, str]]:
         """Verifica se um endereço consta da lista sancionada."""
